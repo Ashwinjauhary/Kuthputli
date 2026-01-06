@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Kathputli - The Web as Performance</title>
+    
+    <!-- GSAP for advanced physics-based animation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+
+    <style>
+        :root {
+            --stage-dark: #0a0505;
+            --spotlight: #e6b87e;
+            --curtain-red: #4a0404;
+            --string-color: rgba(255, 255, 255, 0.3);
+            --gold: #d4af37;
+            --font-main: 'Courier New', Courier, monospace; /* Tech/Script vibe */
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--stage-dark);
+            color: var(--spotlight);
+            font-family: var(--font-main);
+            overflow-x: hidden;
+            cursor: none; /* We will use a custom cursor representing the puppeteer's hand */
+        }
+
+        /* --- STAGE AMBIANCE --- */
+        .stage-lighting {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: radial-gradient(circle at 50% 30%, rgba(230, 184, 126, 0.15) 0%, rgba(10, 5, 5, 1) 70%);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .grain-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.05;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        /* --- CUSTOM CURSOR --- */
+        .puppeteer-hand {
+            position: fixed;
+            width: 20px;
+            height: 20px;
+            border: 1px solid var(--spotlight);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 1000;
+            mix-blend-mode: difference;
+            transition: width 0.3s, height 0.3s;
+        }
+        .puppeteer-hand.active {
+            width: 40px;
+            height: 40px;
+            background: rgba(212, 175, 55, 0.2);
+        }
+
+        /* --- THE PUPPET --- */
+        #puppet-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 50;
+        }
+
+        /* SVG Styles */
+        .string {
+            stroke: var(--string-color);
+            stroke-width: 1;
+            opacity: 0.6;
+        }
+        
+        .puppet-part {
+            fill: var(--curtain-red);
+            stroke: var(--gold);
+            stroke-width: 1.5;
+        }
+        
+        .turban { fill: #d65a31; }
+        .face { fill: #d4af37; }
+        .torso { fill: #222; }
+        .skirt { fill: #8a1c1c; }
+
+        /* --- SCROLL CONTENT (The Narrative) --- */
+        .scroll-container {
+            position: relative;
+            z-index: 10;
+        }
+
+        section {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 2rem;
+            box-sizing: border-box;
+            opacity: 0; /* Hidden initially for animation */
+            transition: opacity 1s ease;
+        }
+
+        section.visible {
+            opacity: 1;
+        }
+
+        .text-block {
+            max-width: 500px;
+            margin-left: 10%;
+            background: rgba(0,0,0,0.6);
+            padding: 20px;
+            border-left: 2px solid var(--gold);
+            backdrop-filter: blur(5px);
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+            letter-spacing: -2px;
+            text-shadow: 0 0 10px rgba(212, 175, 55, 0.3);
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            font-weight: normal;
+            color: var(--gold);
+        }
+
+        p {
+            line-height: 1.6;
+            font-size: 1.1rem;
+        }
+
+        .highlight {
+            color: var(--gold);
+            font-weight: bold;
+        }
+
+        /* --- UI CONTROLS --- */
+        .audio-toggle {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 100;
+            background: transparent;
+            border: 1px solid var(--gold);
+            color: var(--gold);
+            padding: 10px 20px;
+            font-family: inherit;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            transition: all 0.3s;
+            pointer-events: auto;
+        }
+        .audio-toggle:hover {
+            background: var(--gold);
+            color: var(--stage-dark);
+        }
+
+        /* --- MOBILE MESSAGE --- */
+        @media (max-width: 768px) {
+            h1 { font-size: 2rem; }
+            .text-block { margin-left: 5%; width: 90%; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Ambient Layers -->
+    <div class="stage-lighting"></div>
+    <div class="grain-overlay"></div>
+    <div class="puppeteer-hand" id="cursor"></div>
+
+    <!-- The Puppet Stage (Fixed SVG overlay) -->
+    <svg id="puppet-container" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice">
+        <!-- Invisible Strings -->
+        <line id="string-head" class="string" x1="500" y1="0" x2="500" y2="300" />
+        <line id="string-l-hand" class="string" x1="400" y1="0" x2="450" y2="400" />
+        <line id="string-r-hand" class="string" x1="600" y1="0" x2="550" y2="400" />
+
+        <!-- The Puppet Group -->
+        <g id="kathputli">
+            <!-- Skirt (The Base) -->
+            <path id="skirt" class="puppet-part skirt" d="M 450 450 Q 500 440 550 450 L 600 700 Q 500 730 400 700 Z" />
+            
+            <!-- Torso -->
+            <path id="torso" class="puppet-part torso" d="M 470 350 L 530 350 L 550 450 L 450 450 Z" />
+
+            <!-- Head & Turban -->
+            <circle id="head" class="puppet-part face" cx="500" cy="330" r="30" />
+            <path id="turban" class="puppet-part turban" d="M 460 310 Q 500 270 540 310 Q 540 330 520 330 L 480 330 Q 460 330 460 310" />
+
+            <!-- Arms (Grouped for rotation) -->
+            <g id="arm-left-group">
+                <line class="puppet-part" x1="470" y1="360" x2="440" y2="400" stroke-width="4" />
+                <circle id="hand-l" cx="440" cy="400" r="5" fill="#d4af37" />
+            </g>
+            <g id="arm-right-group">
+                <line class="puppet-part" x1="530" y1="360" x2="560" y2="400" stroke-width="4" />
+                <circle id="hand-r" cx="560" cy="400" r="5" fill="#d4af37" />
+            </g>
+        </g>
+    </svg>
+
+    <!-- Narrative Flow -->
+    <div class="scroll-container">
+        
+        <!-- Act 1: The Intro -->
+        <section id="act-1">
+            <div class="text-block">
+                <h2>Act I</h2>
+                <h1>Digital Kathputli</h1>
+                <p>The web is not static. Like a puppet, it waits for the strings to be pulled.</p>
+                <p class="highlight">Move your mouse to control the strings. Scroll to tell the story.</p>
+            </div>
+        </section>
+
+        <!-- Act 2: The Dance -->
+        <section id="act-2">
+            <div class="text-block">
+                <h2>Act II</h2>
+                <h1>The Invisible Code</h1>
+                <p>In traditional Kathputli, the puppeteer is hidden. In the browser, the developer is hidden.</p>
+                <p>We write functions as strings, events as rhythm, and the DOM dances.</p>
+            </div>
+        </section>
+
+        <!-- Act 3: The Tension -->
+        <section id="act-3">
+            <div class="text-block">
+                <h2>Act III</h2>
+                <h1>Resistance & Physics</h1>
+                <p>Real motion isn't linear. It has weight. It has drag.</p>
+                <p>Feel the lag? That is the <span class="highlight">weight of the digital soul</span>.</p>
+            </div>
+        </section>
+
+        <!-- Act 4: Finale -->
+        <section id="act-4">
+            <div class="text-block">
+                <h2>Finale</h2>
+                <h1>The Bow</h1>
+                <p>The strings loosen. The stage fades.</p>
+                <p>Was the puppet ever truly free?</p>
+            </div>
+        </section>
+
+    </div>
+
+    <button class="audio-toggle" id="audioBtn">Turn on Sound (Web Audio)</button>
+
+    <script>
+        // Register GSAP Plugins
+        gsap.registerPlugin(ScrollTrigger);
+
+        // --- 1. SETUP & CONFIG ---
+        const cursor = document.getElementById('cursor');
+        const puppet = document.getElementById('kathputli');
+        const head = document.getElementById('head');
+        const skirt = document.getElementById('skirt');
+        
+        // String Elements
+        const stringHead = document.getElementById('string-head');
+        const stringL = document.getElementById('string-l-hand');
+        const stringR = document.getElementById('string-r-hand');
+
+        // Initial Puppet State (Center of Screen)
+        let puppetState = {
+            x: window.innerWidth / 2,
+            y: window.innerHeight / 3,
+            rotation: 0,
+            skirtSwing: 0
+        };
+
+        // Mouse Physics
+        let mouse = { x: window.innerWidth / 2, y: window.innerHeight / 3 };
+        
+        // --- 2. CUSTOM CURSOR & MOUSE TRACKING ---
+        document.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            
+            // Move custom cursor immediately
+            gsap.to(cursor, {
+                x: mouse.x,
+                y: mouse.y,
+                duration: 0.1
+            });
+        });
+
+        document.addEventListener('mousedown', () => cursor.classList.add('active'));
+        document.addEventListener('mouseup', () => cursor.classList.remove('active'));
+
+        // --- 3. PHYSICS LOOP (The "Soul" of the puppet) ---
+        // We use gsap.ticker for a smooth game-loop style update
+        gsap.ticker.add(() => {
+            // Calculate distance between mouse (puppeteer) and puppet
+            // We add "lag" to simulate string length and weight
+            
+            // X-axis: Follows mouse but with drag
+            let dx = mouse.x - puppetState.x;
+            puppetState.x += dx * 0.05; // 0.05 = heavy weight factor
+
+            // Y-axis: Follows mouse but limited range (clamped)
+            // The puppet mostly stays in the center vertical area unless scrolled
+            let targetY = mouse.y * 0.3 + 200; 
+            let dy = targetY - puppetState.y;
+            puppetState.y += dy * 0.05;
+
+            // Rotation: Based on velocity (swinging effect)
+            let rotation = dx * 0.1; 
+            puppetState.rotation += (rotation - puppetState.rotation) * 0.1;
+
+            // Skirt Physics: Secondary motion (Opposite to body)
+            puppetState.skirtSwing += (rotation * -1.5 - puppetState.skirtSwing) * 0.08;
+
+            // --- RENDER PUPPET ---
+            gsap.set(puppet, {
+                x: puppetState.x - 500, // Offset by SVG center
+                y: puppetState.y - 300,
+                rotation: puppetState.rotation,
+                transformOrigin: "50% 10%" // Rotate from the head/strings
+            });
+
+            // Animate internal parts for liveliness
+            gsap.set(skirt, {
+                rotation: puppetState.skirtSwing,
+                transformOrigin: "50% 0%" // Swing from waist
+            });
+
+            // --- RENDER STRINGS (Connecting Sky to Puppet) ---
+            // We need to calculate where the puppet's attachment points are in screen space
+            // For simplicity in this demo, we approximate based on puppetState
+            
+            // Head String
+            stringHead.setAttribute("x1", puppetState.x); // Top follows puppet X (or fixed if you want anchored strings)
+            stringHead.setAttribute("y1", 0);            // Top fixed at ceiling
+            stringHead.setAttribute("x2", puppetState.x);
+            stringHead.setAttribute("y2", puppetState.y + 30); // Connect to head
+
+            // Left Hand String (Simulate arm attachment)
+            stringL.setAttribute("x1", puppetState.x - 50);
+            stringL.setAttribute("y1", 0);
+            stringL.setAttribute("x2", puppetState.x - 60);
+            stringL.setAttribute("y2", puppetState.y + 100);
+
+            // Right Hand String
+            stringR.setAttribute("x1", puppetState.x + 50);
+            stringR.setAttribute("y1", 0);
+            stringR.setAttribute("x2", puppetState.x + 60);
+            stringR.setAttribute("y2", puppetState.y + 100);
+        });
+
+
+        // --- 4. SCROLL STORYTELLING (The Narrative) ---
+        
+        // Helper to fade in sections
+        const sections = document.querySelectorAll('section');
+        sections.forEach(sec => {
+            ScrollTrigger.create({
+                trigger: sec,
+                start: "top 60%",
+                onEnter: () => sec.classList.add('visible'),
+                onLeaveBack: () => sec.classList.remove('visible')
+            });
+        });
+
+        // ACT 2: DANCE (High energy)
+        ScrollTrigger.create({
+            trigger: "#act-2",
+            start: "top center",
+            end: "bottom center",
+            onToggle: (self) => {
+                if(self.isActive) {
+                    // Make the puppet bounce rhythmically
+                    gsap.to(puppet, {
+                        scale: 1.1,
+                        yoyo: true,
+                        repeat: -1,
+                        duration: 0.5,
+                        ease: "power1.inOut"
+                    });
+                } else {
+                    gsap.to(puppet, { scale: 1 });
+                }
+            }
+        });
+
+        // ACT 3: TENSION (Chaotic)
+        ScrollTrigger.create({
+            trigger: "#act-3",
+            start: "top center",
+            end: "bottom center",
+            onToggle: (self) => {
+                if(self.isActive) {
+                    // Chaotic shaking
+                    gsap.to(".string", {
+                        stroke: "#ff0000",
+                        duration: 0.5
+                    });
+                } else {
+                    gsap.to(".string", {
+                        stroke: "rgba(255, 255, 255, 0.3)",
+                        duration: 0.5
+                    });
+                }
+            }
+        });
+
+        // ACT 4: BOW (End)
+        ScrollTrigger.create({
+            trigger: "#act-4",
+            start: "top center",
+            onEnter: () => {
+                // The puppet bows down
+                gsap.to(puppet, {
+                    rotation: 90,
+                    y: "+=200",
+                    opacity: 0.5,
+                    duration: 2,
+                    ease: "power4.out"
+                });
+                // Strings disappear
+                gsap.to(".string", { opacity: 0, duration: 2 });
+            },
+            onLeaveBack: () => {
+                gsap.to(puppet, {
+                    rotation: 0,
+                    opacity: 1,
+                    duration: 1
+                });
+                gsap.to(".string", { opacity: 0.6, duration: 1 });
+            }
+        });
+
+
+        // --- 5. AUDIO SYSTEM (Procedural Tanpura Drone) ---
+        // We use Web Audio API to create sound without loading files
+        const audioBtn = document.getElementById('audioBtn');
+        let audioCtx;
+        let isPlaying = false;
+        let masterGain;
+
+        audioBtn.addEventListener('click', () => {
+            if (!isPlaying) {
+                initAudio();
+                masterGain.gain.exponentialRampToValueAtTime(0.3, audioCtx.currentTime + 2);
+                audioBtn.textContent = "Mute Sound";
+                isPlaying = true;
+            } else {
+                masterGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1);
+                setTimeout(() => {
+                    if (audioCtx) audioCtx.suspend();
+                    audioBtn.textContent = "Turn on Sound";
+                }, 1000);
+                isPlaying = false;
+            }
+        });
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                masterGain = audioCtx.createGain();
+                masterGain.connect(audioCtx.destination);
+                masterGain.gain.value = 0;
+
+                // Drone 1 (Root Note - C# approx 138Hz)
+                createOscillator(138.59, "sawtooth", 0.15);
+                // Drone 2 (Fifth - G# approx 207Hz)
+                createOscillator(207.65, "sine", 0.1);
+                // Drone 3 (High Root)
+                createOscillator(277.18, "sine", 0.05);
+
+                // Add a low frequency LFO to modulate volume slightly (breathing effect)
+                const lfo = audioCtx.createOscillator();
+                lfo.frequency.value = 0.1; // Slow breath
+                const lfoGain = audioCtx.createGain();
+                lfoGain.gain.value = 0.05;
+                lfo.connect(lfoGain);
+                lfoGain.connect(masterGain.gain);
+                lfo.start();
+            } else {
+                audioCtx.resume();
+            }
+        }
+
+        function createOscillator(freq, type, vol) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.value = freq;
+            gain.gain.value = vol;
+            osc.connect(gain);
+            gain.connect(masterGain);
+            osc.start();
+        }
+
+    </script>
+</body>
+</html>
